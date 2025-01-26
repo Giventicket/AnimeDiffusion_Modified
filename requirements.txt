@@ -1,0 +1,7 @@
+opencv_contrib_python==4.11.0.86
+opencv_python==4.11.0.86
+Pillow==11.1.0
+PyQt6==6.8.0
+pytorch_lightning==2.1.2
+torch==2.5.1+cu118
+torchvision==0.20.1+cu118
