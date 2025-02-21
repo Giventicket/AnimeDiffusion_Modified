@@ -4,16 +4,19 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from AnimeDiffusion import AnimeDiffusion
+from distutils.util import strtobool
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Training Configuration Parser')
     
     # Training Configuration
-    parser.add_argument('--do_train', type=bool, default=True, 
-                        help='Enable or disable training')
-    parser.add_argument('--do_test', type=bool, default=True, 
-                        help='Enable or disable test')
-    parser.add_argument('--epochs', type=int, default=50, 
+    parser.add_argument('--do_train', type=lambda x: bool(strtobool(x)), default=True, 
+                    help='Enable or disable training (True/False)')
+    parser.add_argument('--do_finetuning', type=lambda x: bool(strtobool(x)), default=False, 
+                    help='Enable or disable finetuning (True/False)')
+    parser.add_argument('--do_test', type=lambda x: bool(strtobool(x)), default=False, 
+                        help='Enable or disable test (True/False)')
+    parser.add_argument('--epochs', type=int, default=5, 
                         help='Number of training epochs')
     parser.add_argument('--test_output_dir', type=str, 
                         default='./result/', 
@@ -60,14 +63,14 @@ def parse_arguments():
                         default='/data/Anime/train_data/sketch/', 
                         help='Path to condition data')
     parser.add_argument('--test_reference_path', type=str, 
-                        default='/data/Anime/test_data/reference/', 
+                        default='/data/Anime/test_data_shuffled/reference/', 
                         help='Path to reference data')
     parser.add_argument('--test_condition_path', type=str, 
-                        default='/data/Anime/test_data/sketch/', 
+                        default='/data/Anime/test_data_shuffled/sketch/', 
                         help='Path to condition data')
     
     # Batch Sizes
-    parser.add_argument('--train_batch_size', type=int, default=8, 
+    parser.add_argument('--train_batch_size', type=int, default=32, 
                         help='Batch size for training')
     parser.add_argument('--test_batch_size', type=int, default=1, 
                         help='Batch size for validation')
@@ -76,7 +79,7 @@ def parse_arguments():
     parser.add_argument('--size', type=int, default=256, 
                         help='Image size')
     
-    parser.add_argument('--gpus', nargs='+', type=int, default=[0, 1])
+    parser.add_argument('--gpus', nargs='+', type=int, default=[1])
     
     # Parse arguments
     args = parser.parse_args()
@@ -92,8 +95,8 @@ if __name__ == "__main__":
 
     # Model checkpoint callback
     checkpoint_callback = ModelCheckpoint(
-        monitor="train_loss",
-        filename='{epoch:02d}-{train_loss:.4f}',
+        monitor="train_avg_loss",
+        filename='{epoch:02d}-{train_avg_loss:.4f}',
         save_top_k=3,
         mode="min",
         every_n_epochs=1,
@@ -120,9 +123,13 @@ if __name__ == "__main__":
 
     # Training
     if cfg.do_train:
-        trainer.fit(model)
+        if cfg.do_finetuning:
+            trainer.fit(model, ckpt_path="/root/AnimeDiffusion/logs/lightning_logs/version_0/checkpoints/epoch=04-train_loss=0.0139.ckpt")
+        else: 
+            trainer.fit(model)
+    
 
     # Testing
     if cfg.do_test:
         os.makedirs(cfg.test_output_dir, exist_ok=True)  # 디렉토리 생성
-        trainer.test(model, ckpt_path="best")  # You can specify the checkpoint path if needed
+        trainer.test(model, ckpt_path="/root/AnimeDiffusion/logs/lightning_logs/version_0/checkpoints/epoch=04-train_loss=0.0139.ckpt")

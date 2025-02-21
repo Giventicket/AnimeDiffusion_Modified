@@ -9,6 +9,7 @@ from data.anime import Anime
 from models.diffusion import GaussianDiffusion
 import utils.image
 import utils.path
+import torch.nn.functional as F
 
 class AnimeDiffusion(pl.LightningModule):
     def __init__(self, cfg):
@@ -74,6 +75,7 @@ class AnimeDiffusion(pl.LightningModule):
         self.train_dataset = Anime(
             reference_path = self.cfg.train_reference_path, 
             condition_path = self.cfg.train_condition_path,
+            size = self.cfg.size,
         )
         train_dataloader = DataLoader(
             self.train_dataset, 
@@ -88,6 +90,7 @@ class AnimeDiffusion(pl.LightningModule):
         self.test_dataset = Anime(
             reference_path = self.cfg.test_reference_path, 
             condition_path = self.cfg.test_condition_path,
+            size = self.cfg.size,
         )
         test_dataset = DataLoader(
             self.test_dataset, 
@@ -98,7 +101,14 @@ class AnimeDiffusion(pl.LightningModule):
         )
         return test_dataset
     
-    def training_step(self, batch, batch_idx):
+    def on_train_start(self):
+        total_params = sum(p.numel() for p in self.model.parameters())
+        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        self.print(f"Total Parameters: {total_params:,}")
+        self.print(f"Trainable Parameters: {trainable_params:,}")
+
+    
+    def pretraining_step(self, batch, batch_idx):
         x_ref = batch["reference"].to(self.device)  # [B, 3, H, W]
         x_con = batch["condition"].to(self.device)  # [B, 1, H, W]
         x_dis = batch["distorted"].to(self.device)  # [B, 3, H, W]
@@ -122,8 +132,46 @@ class AnimeDiffusion(pl.LightningModule):
         self.log("train_loss", loss, prog_bar=True, sync_dist=True)
         current_lr = optimizer.param_groups[0]['lr']
         self.log('lr', current_lr, prog_bar=True, logger=True)
-
+        
         return loss
+    
+    def finetuning_step(self, batch, batch_idx):
+        x_ref = batch["reference"].to(self.device)  # [B, 3, H, W]
+        x_con = batch["condition"].to(self.device)  # [B, 1, H, W]
+        x_dis = batch["distorted"].to(self.device)  # [B, 3, H, W]
+
+        batch_size = x_ref.size(0)
+        t = torch.randint(0, self.cfg.time_step, (batch_size,), device=self.device).long()  # [B]
+
+        # [B, 1, H, W] + [B, 3, H, W] → [B, 4, H, W]
+        x_cond = torch.cat([x_con, x_dis], dim=1)
+
+        with torch.no_grad():
+            x_T = self.model.fix_forward(x_ref, x_cond=x_cond)
+
+        x_til = self.model.inference_ddim(x_t=x_T, x_cond=x_cond)[-1]
+        loss = F.mse_loss(x_til, x_ref)
+
+        optimizer = self.optimizers()
+        optimizer.zero_grad()
+        self.manual_backward(loss)
+        optimizer.step()
+        
+        scheduler = self.lr_schedulers()
+        scheduler.step()
+
+        self.log("train_loss", loss, prog_bar=True, sync_dist=True)
+        current_lr = optimizer.param_groups[0]['lr']
+        self.log('lr', current_lr, prog_bar=True, logger=True)
+        
+        return loss
+
+    
+    def training_step(self, batch, batch_idx):
+        if self.cfg.do_finetuning:
+            return self.finetuning_step(batch, batch_idx)
+        else:
+            return self.pretraining_step(batch, batch_idx)
 
     def on_train_epoch_end(self):
         avg_loss = self.all_gather(self.trainer.callback_metrics["train_loss"]).mean()

@@ -47,7 +47,7 @@ class GaussianDiffusion(nn.Module):
         self.register_buffer('posterior_mean_coef2', (1. - gammas_prev) * torch.sqrt(alphas) / (1. - gammas))
 
         # loss function
-        self.loss_fn = partial(F.mse_loss, reduction="sum")
+        self.loss_fn = partial(F.mse_loss, reduction="mean")
 
     def q_sample(self, x_0, t, noise=None):
         if noise is None:
