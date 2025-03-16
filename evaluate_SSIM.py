@@ -4,8 +4,7 @@ import cv2
 
 # 경로 설정
 real_dir = '/data/Anime/test_data/reference'
-generated_dir = './result_same'
-
+generated_dir = './result_same_mse+lpips'
 
 # 모든 이미지의 SSIM을 저장할 리스트
 ssim_scores = []
@@ -21,6 +20,7 @@ for real_file, gen_file in zip(real_files, generated_files):
 
     # 이미지 불러오기 (Grayscale)
     img_real = cv2.imread(real_path, cv2.IMREAD_GRAYSCALE)
+    
     img_gen = cv2.imread(gen_path, cv2.IMREAD_GRAYSCALE)
 
     # 크기 맞추기

@@ -5,6 +5,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from AnimeDiffusion import AnimeDiffusion
 from distutils.util import strtobool
+import torch
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Training Configuration Parser')
@@ -19,7 +20,7 @@ def parse_arguments():
     parser.add_argument('--epochs', type=int, default=5, 
                         help='Number of training epochs')
     parser.add_argument('--test_output_dir', type=str, 
-                        default='./result/', 
+                        default='./result_diff_mse+lpips/', 
                         help='Directory for test outputs')
     
     # Diffusion Process Configuration
@@ -46,6 +47,9 @@ def parse_arguments():
                         help='Enable or disable CBAM')
     
     # Optimizer Configuration
+    parser.add_argument('--finetuning_loss_type', type=str, 
+                        default='mse', #mse, lpips, mse+lpips, mse+lpips+PCGrad
+                        help='Path to reference data')
     parser.add_argument('--lr', type=float, default=1e-4, 
                         help='Learning rate')
     parser.add_argument('--min_lr', type=float, default=1e-8, 
@@ -124,7 +128,9 @@ if __name__ == "__main__":
     # Training
     if cfg.do_train:
         if cfg.do_finetuning:
-            trainer.fit(model, ckpt_path="/root/AnimeDiffusion/logs/lightning_logs/version_0/checkpoints/epoch=04-train_loss=0.0139.ckpt")
+            checkpoint = torch.load("/root/AnimeDiffusion/logs/lightning_logs/version_0/checkpoints/epoch=04-train_avg_loss=0.0139.ckpt", map_location='cuda')
+            model.load_state_dict(checkpoint['state_dict'], strict=False)
+            trainer.fit(model)
         else: 
             trainer.fit(model)
     
@@ -132,4 +138,8 @@ if __name__ == "__main__":
     # Testing
     if cfg.do_test:
         os.makedirs(cfg.test_output_dir, exist_ok=True)  # 디렉토리 생성
-        trainer.test(model, ckpt_path="/root/AnimeDiffusion/logs/lightning_logs/version_0/checkpoints/epoch=04-train_loss=0.0139.ckpt")
+        # trainer.test(model, ckpt_path="/root/AnimeDiffusion/logs/lightning_logs/version_1/checkpoints/epoch=00-train_avg_loss=0.0260.ckpt")
+        # trainer.test(model, ckpt_path="/root/AnimeDiffusion/logs/lightning_logs/version_2/checkpoints/epoch=00-train_avg_loss=0.2129.ckpt")
+        checkpoint = torch.load("/root/AnimeDiffusion/logs/lightning_logs/version_3/checkpoints/epoch=00-train_avg_loss=0.1231.ckpt", map_location='cuda')
+        model.load_state_dict(checkpoint['state_dict'], strict=False)
+        trainer.test(model)
